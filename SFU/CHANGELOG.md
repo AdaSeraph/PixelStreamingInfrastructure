@@ -1,5 +1,11 @@
 # @epicgames-ps/pixelstreaming-sfu
 
+## 1.1.2
+
+### Patch Changes
+
+- 551c2b8: Add offline/intranet runtime bundler, China mirror support, and end-to-end healthcheck
+
 ## 1.1.1
 
 ### Patch Changes

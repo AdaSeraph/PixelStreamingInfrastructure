@@ -1,5 +1,11 @@
 # @epicgames-ps/reference-pixelstreamingfrontend-ue5.5
 
+## 0.1.1
+
+### Patch Changes
+
+- 551c2b8: Add offline/intranet runtime bundler, China mirror support, and end-to-end healthcheck
+
 ## 0.1.0
 
 ### Minor Changes
