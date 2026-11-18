@@ -1,7 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 import { Logger } from '@epicgames-ps/lib-pixelstreamingcommon-ue5.8';
-import { Config, OptionParameters, Flags } from '../Config/Config';
+import { Config, OptionParameters, Flags, NumericParameters } from '../Config/Config';
 import { AggregatedStats } from './AggregatedStats';
 import { parseRtpParameters, splitSections } from 'sdp';
 import { RTCUtils } from '../Util/RTCUtils';
@@ -326,6 +326,47 @@ export class PeerConnectionController {
     }
 
     /**
+     * Apply the configured jitter buffer target (jitterBufferTarget / playoutDelayHint) to an RTCRtpReceiver.
+     * A negative target resets to the browser default.
+     */
+    applyJitterBufferTarget(receiver: RTCRtpReceiver | undefined | null) {
+        if (!receiver) {
+            return;
+        }
+        const targetMs = this.config.getNumericSettingValue(NumericParameters.JitterBufferTarget);
+        const rtpReceiver = receiver as RTCRtpReceiver & {
+            jitterBufferTarget?: number | null;
+            playoutDelayHint?: number | null;
+        };
+        try {
+            if ('jitterBufferTarget' in rtpReceiver) {
+                rtpReceiver.jitterBufferTarget = targetMs >= 0 ? targetMs : null;
+            }
+        } catch (err) {
+            Logger.Warning(`Failed to set jitterBufferTarget: ${err}`);
+        }
+        try {
+            if ('playoutDelayHint' in rtpReceiver) {
+                rtpReceiver.playoutDelayHint = targetMs >= 0 ? targetMs / 1000 : null;
+            }
+        } catch (err) {
+            Logger.Warning(`Failed to set playoutDelayHint: ${err}`);
+        }
+    }
+
+    /**
+     * Re-apply jitter buffer target to all active receivers on the peer connection.
+     */
+    updateJitterBufferTarget() {
+        if (!this.peerConnection) {
+            return;
+        }
+        for (const receiver of this.peerConnection.getReceivers()) {
+            this.applyJitterBufferTarget(receiver);
+        }
+    }
+
+    /**
      * Activates the onTrack method
      * @param event - The webRtc track event
      */
@@ -333,6 +374,7 @@ export class PeerConnectionController {
         if (event.streams.length < 1 || event.streams[0].id === 'probator') {
             return;
         }
+        this.applyJitterBufferTarget(event.receiver);
         if (event.track.kind === 'video') {
             this.videoTrack = event.track;
         }

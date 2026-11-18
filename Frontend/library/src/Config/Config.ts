@@ -68,6 +68,7 @@ export class NumericParameters {
     static StreamerAutoJoinInterval = 'StreamerAutoJoinInterval' as const;
     static KeepaliveDelay = 'KeepaliveDelay' as const;
     static ViewportResScale = 'ViewportResScale' as const;
+    static JitterBufferTarget = 'JitterBufferTarget' as const;
 }
 
 export type NumericParametersKeys = Exclude<keyof typeof NumericParameters, 'prototype'>;
@@ -927,6 +928,22 @@ export class Config {
                 settings && Object.prototype.hasOwnProperty.call(settings, NumericParameters.ViewportResScale)
                     ? settings[NumericParameters.ViewportResScale]
                     : 1.0 /*value*/,
+                useUrlParams
+            )
+        );
+
+        this.numericParameters.set(
+            NumericParameters.JitterBufferTarget,
+            new SettingNumber(
+                NumericParameters.JitterBufferTarget,
+                'Jitter Buffer Target (ms)',
+                'Target jitter buffer delay in milliseconds (0 = minimum latency, -1 = browser default).',
+                -1 /*min*/,
+                10000 /*max*/,
+                settings &&
+                    Object.prototype.hasOwnProperty.call(settings, NumericParameters.JitterBufferTarget)
+                    ? settings[NumericParameters.JitterBufferTarget]
+                    : 0 /*value*/,
                 useUrlParams
             )
         );

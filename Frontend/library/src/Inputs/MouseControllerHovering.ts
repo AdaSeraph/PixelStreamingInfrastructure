@@ -44,6 +44,8 @@ export class MouseControllerHovering extends MouseController {
     // UE pairs every MouseDown with a later MouseUp, so this is what we must always release again.
     private pressedButtons = 0;
     private capturedPointerId: number | null = null;
+    private pendingMouseMove: { x: number; y: number; deltaX: number; deltaY: number } | null = null;
+    private mouseMoveRafId: number | null = null;
 
     constructor(
         streamMessageController: StreamMessageController,
@@ -80,6 +82,7 @@ export class MouseControllerHovering extends MouseController {
     }
 
     override unregister(): void {
+        this.cancelPendingMouseMove();
         this.videoElementParent.removeEventListener('pointerdown', this.onPointerDownListener);
         this.videoElementParent.removeEventListener('pointermove', this.onPointerMoveListener);
         this.videoElementParent.removeEventListener('pointerup', this.onPointerUpListener);
@@ -200,10 +203,28 @@ export class MouseControllerHovering extends MouseController {
         }
     }
 
+    private cancelPendingMouseMove() {
+        this.pendingMouseMove = null;
+        if (this.mouseMoveRafId !== null && typeof window !== 'undefined' && window.cancelAnimationFrame) {
+            window.cancelAnimationFrame(this.mouseMoveRafId);
+        }
+        this.mouseMoveRafId = null;
+    }
+
+    private flushPendingMouseMove() {
+        if (!this.pendingMouseMove) {
+            return;
+        }
+        const { x, y, deltaX, deltaY } = this.pendingMouseMove;
+        this.pendingMouseMove = null;
+        this.streamMessageController.toStreamerHandlers.get('MouseMove')?.([x, y, deltaX, deltaY]);
+    }
+
     private onPointerDown(event: PointerEvent) {
         if (this.shouldIgnore(event)) {
             return;
         }
+        this.flushPendingMouseMove();
         this.captureOnce(event.pointerId);
         this.syncButtons(event.buttons, event.clientX, event.clientY);
     }
@@ -212,6 +233,7 @@ export class MouseControllerHovering extends MouseController {
         if (this.shouldIgnore(event)) {
             return;
         }
+        this.flushPendingMouseMove();
         this.syncButtons(event.buttons, event.clientX, event.clientY);
     }
 
@@ -236,12 +258,28 @@ export class MouseControllerHovering extends MouseController {
         }
         const coord = this.translateCoordinates(event.clientX, event.clientY);
         const delta = this.coordinateConverter.translateSigned(event.movementX, event.movementY);
-        this.streamMessageController.toStreamerHandlers.get('MouseMove')?.([
-            coord.x,
-            coord.y,
-            delta.x,
-            delta.y
-        ]);
+
+        if (this.mouseMoveRafId === null) {
+            this.streamMessageController.toStreamerHandlers.get('MouseMove')?.([
+                coord.x,
+                coord.y,
+                delta.x,
+                delta.y
+            ]);
+            if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+                this.mouseMoveRafId = window.requestAnimationFrame(() => {
+                    this.mouseMoveRafId = null;
+                    this.flushPendingMouseMove();
+                });
+            }
+        } else {
+            this.pendingMouseMove = {
+                x: coord.x,
+                y: coord.y,
+                deltaX: (this.pendingMouseMove?.deltaX ?? 0) + delta.x,
+                deltaY: (this.pendingMouseMove?.deltaY ?? 0) + delta.y
+            };
+        }
     }
 
     /**

@@ -25,6 +25,9 @@ export class MouseControllerLocked extends MouseController {
     onMouseWheelListener: (event: WheelEvent) => void;
     onMouseMoveListener: (event: MouseEvent) => void;
 
+    private pendingMouseMove: { x: number; y: number; deltaX: number; deltaY: number } | null = null;
+    private mouseMoveRafId: number | null = null;
+
     constructor(
         streamMessageController: StreamMessageController,
         videoPlayer: VideoPlayer,
@@ -68,6 +71,7 @@ export class MouseControllerLocked extends MouseController {
     }
 
     override unregister() {
+        this.cancelPendingMouseMove();
         const pointerLockElement = document.pointerLockElement || document.mozPointerLockElement;
         if (document.exitPointerLock && pointerLockElement === this.videoElementParent) {
             document.exitPointerLock();
@@ -97,6 +101,7 @@ export class MouseControllerLocked extends MouseController {
             document.addEventListener('mousemove', this.onMouseMoveListener);
         } else {
             Logger.Info('The pointer lock status is now unlocked');
+            this.cancelPendingMouseMove();
             document.removeEventListener('mousemove', this.onMouseMoveListener);
 
             // If mouse loses focus, send a key up for all of the currently held-down keys
@@ -109,11 +114,28 @@ export class MouseControllerLocked extends MouseController {
         }
     }
 
+    private cancelPendingMouseMove() {
+        this.pendingMouseMove = null;
+        if (this.mouseMoveRafId !== null && typeof window !== 'undefined' && window.cancelAnimationFrame) {
+            window.cancelAnimationFrame(this.mouseMoveRafId);
+        }
+        this.mouseMoveRafId = null;
+    }
+
+    private flushPendingMouseMove() {
+        if (!this.pendingMouseMove) {
+            return;
+        }
+        const { x, y, deltaX, deltaY } = this.pendingMouseMove;
+        this.pendingMouseMove = null;
+        this.streamMessageController.toStreamerHandlers.get('MouseMove')?.([x, y, deltaX, deltaY]);
+    }
+
     private onMouseDown(event: MouseEvent) {
         if (!this.videoPlayer.isVideoReady()) {
             return;
         }
-
+        this.flushPendingMouseMove();
         this.streamMessageController.toStreamerHandlers.get('MouseDown')([
             event.button,
             // We use the store value of this.coord as opposed to the mouseEvent.x/y as the mouseEvent location
@@ -127,6 +149,7 @@ export class MouseControllerLocked extends MouseController {
         if (!this.videoPlayer.isVideoReady()) {
             return;
         }
+        this.flushPendingMouseMove();
         this.streamMessageController.toStreamerHandlers.get('MouseUp')([
             event.button,
             // We use the store value of this.coord as opposed to the mouseEvent.x/y as the mouseEvent location
@@ -161,12 +184,28 @@ export class MouseControllerLocked extends MouseController {
 
         this.normalizedCoord = this.coordinateConverter.translateUnsigned(this.x, this.y);
         const delta = this.coordinateConverter.translateSigned(event.movementX, event.movementY);
-        this.streamMessageController.toStreamerHandlers.get('MouseMove')([
-            this.normalizedCoord.x,
-            this.normalizedCoord.y,
-            delta.x,
-            delta.y
-        ]);
+
+        if (this.mouseMoveRafId === null) {
+            this.streamMessageController.toStreamerHandlers.get('MouseMove')([
+                this.normalizedCoord.x,
+                this.normalizedCoord.y,
+                delta.x,
+                delta.y
+            ]);
+            if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+                this.mouseMoveRafId = window.requestAnimationFrame(() => {
+                    this.mouseMoveRafId = null;
+                    this.flushPendingMouseMove();
+                });
+            }
+        } else {
+            this.pendingMouseMove = {
+                x: this.normalizedCoord.x,
+                y: this.normalizedCoord.y,
+                deltaX: (this.pendingMouseMove?.deltaX ?? 0) + delta.x,
+                deltaY: (this.pendingMouseMove?.deltaY ?? 0) + delta.y
+            };
+        }
     }
 
     private onMouseWheel(event: WheelEvent) {

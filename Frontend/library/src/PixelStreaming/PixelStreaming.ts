@@ -260,6 +260,10 @@ export class PixelStreaming {
             Logger.Info('-------------------------------------------');
         });
 
+        this.config._addOnNumericSettingChangedListener(NumericParameters.JitterBufferTarget, () => {
+            this._webRtcController.peerConnectionController?.updateJitterBufferTarget();
+        });
+
         this.config._addOnOptionSettingChangedListener(
             OptionParameters.PreferredCodec,
             (newValue: string) => {

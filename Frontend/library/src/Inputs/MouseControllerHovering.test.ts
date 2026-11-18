@@ -322,4 +322,34 @@ describe('MouseControllerHovering', () => {
         fire('pointermove', { buttons: MouseButtonsMask.primaryButton });
         expect(handlers.MouseMove).not.toHaveBeenCalled();
     });
+
+    it('coalesces burst pointermove events within a single animation frame while keeping leading-edge immediate', () => {
+        const rafCallbacks: FrameRequestCallback[] = [];
+        const rafSpy = jest.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+            rafCallbacks.push(cb);
+            return rafCallbacks.length;
+        });
+
+        fire('pointermove', { buttons: 0, clientX: 10, clientY: 10, movementX: 2, movementY: 3 });
+        // First move fires immediately (0ms added latency)
+        expect(callsOf('MouseMove')).toHaveLength(1);
+
+        // Subsequent moves in the same frame are coalesced
+        fire('pointermove', { buttons: 0, clientX: 20, clientY: 20, movementX: 10, movementY: 10 });
+        fire('pointermove', { buttons: 0, clientX: 35, clientY: 40, movementX: 15, movementY: 20 });
+        expect(callsOf('MouseMove')).toHaveLength(1);
+
+        // Flush on next animation frame with latest coords and summed deltas
+        expect(rafCallbacks).toHaveLength(1);
+        rafCallbacks[0](16);
+        expect(callsOf('MouseMove')).toHaveLength(2);
+        const [x, y, dx, dy] = callsOf('MouseMove')[1];
+        const signedUnitsPerPixel = 65534 / playerSize;
+        expect(x).toBeCloseTo(35 * unitsPerPixel, 1);
+        expect(y).toBeCloseTo(40 * unitsPerPixel, 1);
+        expect(dx).toBeCloseTo(25 * signedUnitsPerPixel, 1);
+        expect(dy).toBeCloseTo(30 * signedUnitsPerPixel, 1);
+
+        rafSpy.mockRestore();
+    });
 });

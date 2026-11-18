@@ -1,4 +1,4 @@
-import { Config, OptionParameters } from '../Config/Config';
+import { Config, NumericParameters, OptionParameters } from '../Config/Config';
 import { PeerConnectionController } from './PeerConnectionController';
 import { getCodecOption } from '../Util/CodecUtils';
 import { mockRTCPeerConnection, unmockRTCPeerConnection } from '../__test__/mockRTCPeerConnection';
@@ -228,5 +228,31 @@ describe('PeerConnectionController', () => {
         await receiveOffer(peerConnectionController, config, ueOfferedCodecs);
 
         expect(setCodecPreferencesSpy).not.toHaveBeenCalled();
+    });
+
+    it('should apply low-latency jitterBufferTarget and playoutDelayHint on incoming track', () => {
+        const config = new Config();
+        const peerConnectionController = createPeerConnectionController(config, '');
+        const receiver = {
+            track: { kind: 'video' },
+            jitterBufferTarget: 150,
+            playoutDelayHint: 0.15
+        } as unknown as RTCRtpReceiver;
+
+        peerConnectionController.handleOnTrack({
+            streams: [{ id: 'stream-1' }],
+            track: { kind: 'video' },
+            receiver
+        } as unknown as RTCTrackEvent);
+
+        expect((receiver as unknown as { jitterBufferTarget: number | null }).jitterBufferTarget).toBe(0);
+        expect((receiver as unknown as { playoutDelayHint: number | null }).playoutDelayHint).toBe(0);
+
+        config.setNumericSetting(NumericParameters.JitterBufferTarget, 50);
+        jest.spyOn(peerConnectionController.peerConnection, 'getReceivers').mockReturnValue([receiver]);
+        peerConnectionController.updateJitterBufferTarget();
+
+        expect((receiver as unknown as { jitterBufferTarget: number | null }).jitterBufferTarget).toBe(50);
+        expect((receiver as unknown as { playoutDelayHint: number | null }).playoutDelayHint).toBe(0.05);
     });
 });
