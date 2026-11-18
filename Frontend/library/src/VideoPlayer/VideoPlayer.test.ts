@@ -138,4 +138,70 @@ describe('VideoPlayer.updateVideoStreamSize — ViewportResScale', () => {
 
         expect(callback).not.toHaveBeenCalled();
     });
+
+    it('renders VideoFrames onto a desynchronized canvas when LowLatencyRender and MediaStreamTrackProcessor are available', async () => {
+        const drawImageSpy = jest.fn();
+        const getContextSpy = jest
+            .spyOn(HTMLCanvasElement.prototype, 'getContext')
+            .mockReturnValue({ drawImage: drawImageSpy } as unknown as CanvasRenderingContext2D);
+
+        const frameCloseSpy = jest.fn();
+        const mockFrame = {
+            displayWidth: 1280,
+            displayHeight: 720,
+            close: frameCloseSpy
+        } as unknown as VideoFrame;
+
+        let readCount = 0;
+        const cancelSpy = jest.fn().mockResolvedValue(undefined);
+        const mockReader = {
+            read: jest.fn().mockImplementation(async () => {
+                if (readCount === 0) {
+                    readCount++;
+                    return { value: mockFrame, done: false };
+                }
+                return { value: undefined, done: true };
+            }),
+            cancel: cancelSpy
+        };
+
+        const originalProcessor = (globalThis as unknown as { MediaStreamTrackProcessor?: unknown })
+            .MediaStreamTrackProcessor;
+        (globalThis as unknown as { MediaStreamTrackProcessor?: unknown }).MediaStreamTrackProcessor = jest
+            .fn()
+            .mockImplementation(() => ({
+                readable: { getReader: () => mockReader }
+            }));
+
+        const attached = player.attachLowLatencyTrack({ kind: 'video' } as MediaStreamTrack);
+        expect(attached).toBe(true);
+        expect(getContextSpy).toHaveBeenCalledWith('2d', { alpha: false, desynchronized: true });
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const canvas = parent.querySelector('#streamingCanvas') as HTMLCanvasElement;
+        expect(canvas).not.toBeNull();
+        expect(canvas.width).toBe(1280);
+        expect(canvas.height).toBe(720);
+        expect(drawImageSpy).toHaveBeenCalledWith(mockFrame, 0, 0, 1280, 720);
+        expect(frameCloseSpy).toHaveBeenCalledTimes(1);
+        expect(player.getVideoElement().style.opacity).toBe('0');
+
+        player.stopLowLatencyRender();
+        expect(parent.querySelector('#streamingCanvas')).toBeNull();
+        expect(player.getVideoElement().style.opacity).toBe('1');
+        expect(cancelSpy).toHaveBeenCalledTimes(1);
+
+        (globalThis as unknown as { MediaStreamTrackProcessor?: unknown }).MediaStreamTrackProcessor =
+            originalProcessor;
+        getContextSpy.mockRestore();
+    });
+
+    it('falls back to standard <video> when LowLatencyRender is disabled', () => {
+        config.setFlagEnabled(Flags.LowLatencyRender, false);
+        const attached = player.attachLowLatencyTrack({ kind: 'video' } as MediaStreamTrack);
+        expect(attached).toBe(false);
+        expect(parent.querySelector('#streamingCanvas')).toBeNull();
+    });
 });

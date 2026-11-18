@@ -47,12 +47,15 @@ export class StreamController {
         if (rtcTrackEvent.track.kind === 'audio') {
             this.CreateAudioTrack(rtcTrackEvent.streams[0]);
             return;
-        } else if (
-            rtcTrackEvent.track.kind === 'video' &&
-            videoElement.srcObject !== rtcTrackEvent.streams[0]
-        ) {
-            videoElement.srcObject = rtcTrackEvent.streams[0];
-            Logger.Info('Set video source from video track ontrack.');
+        } else if (rtcTrackEvent.track.kind === 'video') {
+            if ('contentHint' in rtcTrackEvent.track) {
+                rtcTrackEvent.track.contentHint = 'motion';
+            }
+            if (videoElement.srcObject !== rtcTrackEvent.streams[0]) {
+                videoElement.srcObject = rtcTrackEvent.streams[0];
+                Logger.Info('Set video source from video track ontrack.');
+            }
+            this.videoElementProvider.attachLowLatencyTrack(rtcTrackEvent.track);
             return;
         }
     }

@@ -40,6 +40,7 @@ export class Flags {
     static EnableCaptureTimeExt = 'EnableCaptureTimeExt' as const;
     static BrowserSendOffer = 'BrowserSendOffer' as const;
     static LatencyCSV = 'LatencyCSV' as const;
+    static LowLatencyRender = 'LowLatencyRender' as const;
 }
 
 export type FlagsKeys = Exclude<keyof typeof Flags, 'prototype'>;
@@ -699,6 +700,19 @@ export class Config {
                 settings && Object.prototype.hasOwnProperty.call(settings, Flags.LatencyCSV)
                     ? settings[Flags.LatencyCSV]
                     : false,
+                useUrlParams
+            )
+        );
+
+        this.flags.set(
+            Flags.LowLatencyRender,
+            new SettingFlag(
+                Flags.LowLatencyRender,
+                'Low Latency Canvas Render',
+                'Bypass <video> compositor queue using MediaStreamTrackProcessor and a desynchronized canvas when supported.',
+                settings && Object.prototype.hasOwnProperty.call(settings, Flags.LowLatencyRender)
+                    ? settings[Flags.LowLatencyRender]
+                    : true,
                 useUrlParams
             )
         );
